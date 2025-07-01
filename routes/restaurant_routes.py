@@ -57,6 +57,7 @@ def menu_par_date(hash_url):
         
         # Get restaurant info from first result
         restaurant = {
+            "type_entreprise": results[0][0].restaurant.type_entreprise,
             "nom": results[0][0].restaurant.nom,
             "logo": results[0][0].restaurant.logo,
             "adresse": results[0][0].restaurant.adresse
