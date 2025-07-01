@@ -26,7 +26,7 @@ def add():
 # Afficher la liste des catégories
 @api.route('/liste_categorie', methods=['GET'])
 def liste():
-    categories = Categories.query.all()
+    categories = Categories.query.order_by(Categories.id.desc()).all()
     return jsonify([
          {
                 'id': categorie.id,
@@ -86,7 +86,7 @@ def update_categorie(id):
 @api.route('/liste_categorie_restaurant/<int:id>', methods=['GET'])
 @jwt_required()
 def liste_categorie_restaurant(id):
-    categories = Categories.query.filter_by(restaurant_id=id).all()
+    categories = Categories.query.filter(Categories.restaurant_id==id).order_by(Categories.id.desc()).all()
 
     # Compter le nombre total de catégories
     total_categories = len(categories)

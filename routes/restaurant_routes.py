@@ -295,7 +295,7 @@ def static_files(filename):
 # Liste de tous les restaurants
 @api.route('/liste_restaurants', methods=['GET'])
 def get_all_restaurants():
-    restaurants = Restaurants.query.all()
+    restaurants = Restaurants.query.order_by(Restaurants.id.desc()).all()
 
     # Compter le nombre total des restaurant
     total_restaurant = len(restaurants)
@@ -382,7 +382,7 @@ def restaurant_update(id):
     db.session.commit()
 
     return jsonify({
-        'message': 'Restaurant mis à jour avec succès',
+        'message': 'Votre profil a été mis à jour avec succès',
         'restaurant': {
             "type_entreprise": restaurant.type_entreprise,
             "nom": restaurant.nom,
@@ -445,17 +445,19 @@ def get_restaurant_by_id(id):
 # Compter le nombre total des restaurants
 @api.route('/count_restaurants', methods=['GET'])
 def get_count_restaurants():
-    # Compter le nombre total des restaurant
+    total = Restaurants.query.count()
+    # Compter le nombre total par entreprise
     total_restaurant = len(Restaurants.query.filter_by(type_entreprise="Restaurant").all())
     total_marquis = len(Restaurants.query.filter_by(type_entreprise="Marquis").all())
     total_commerce = len(Restaurants.query.filter_by(type_entreprise="E-commerce").all())
     return jsonify(
-        {
-             'total_resto': total_restaurant,
+        {   
+            'total': total,
+            'total_resto': total_restaurant,
             'total_marquis': total_marquis,
             'total_commerce': total_commerce
         }
-     )
+     ), 200
 
 # Scanner pour connaitre le type de téléphone.
 @api.route("/scan", methods=["POST"])
@@ -702,20 +704,3 @@ def stats_scans_par_os():
         "daily": daily_result,
         "monthly": monthly_result
     }), 200
-
-
-# @api.route("/generate_qr/<string:restaurant_name>")
-# def generate_qr(restaurant_name):
-#     qr_data = f"http://127.0.0.1:5000/api/restaurant/{restaurant_name}"
-#     qr_img = qrcode.make(qr_data)
-
-#     img_io = io.BytesIO()
-#     qr_img.save(img_io, "PNG")
-#     img_io.seek(0)
-
-#     return send_file(
-#         img_io,
-#         mimetype="image/png",
-#         as_attachment=True,
-#         download_name=f"qr_code_{restaurant_name}.png"
-#     )

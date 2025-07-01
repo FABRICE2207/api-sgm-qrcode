@@ -108,7 +108,7 @@ def categorie_by_id(id):
 # Afficher la liste des catégories
 @api.route('/liste_plats', methods=['GET'])
 def plats_liste():
-    plats = Plats.query.all()
+    plats = Plats.query.order_by(Plats.id.desc()).all()
     return jsonify([
          {
                 'id': plat.id,
@@ -117,6 +117,7 @@ def plats_liste():
                 'date_jour': plat.date_jour,
                 'image': plat.image,
                 'prix': plat.prix,
+                'created_at': plat.created_at,
                 'categories' : {
                   'id': plat.categories_id,
                   'nom': plat.categories.nom,
@@ -273,8 +274,7 @@ def menu_par_date(restaurant_id, date_str):
 @api.route('/liste_plats_restaurant/<int:id>', methods=['GET'])
 @jwt_required()
 def liste_categorie_restaurant(id):
-    plats = Plats.query.filter_by(restaurant_id=id).all()
-
+    plats = Plats.query.filter(Plats.restaurant_id == id).order_by(Plats.id.desc()).all()
     # Compter le nombre total de catégories
     total_plats = len(plats)
     
