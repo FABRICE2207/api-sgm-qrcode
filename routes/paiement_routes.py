@@ -3,9 +3,20 @@ from models import db, Paiements, Abonnements
 import os
 import requests
 import uuid
+from datetime import datetime, timedelta
+api = Blueprint("paiements_api", __name__)
+
+# Clé API de paiement
 CINETPAY_APIKEY = os.getenv("CINETPAY_APIKEY")
 
-api = Blueprint("paiements_api", __name__)
+# Site id
+CINETPAY_SITE_ID = os.getenv("CINETPAY_SITE_ID")
+
+# Notification
+CINETPAY_NOTIFY_URL = os.getenv("CINETPAY_NOTIFY_URL")
+
+# Retourne url
+CINETPAY_RETURN_URL = os.getenv("CINETPAY_RETURN_URL")
 
 # Route paiement
 @api.route("/paiements_initier", methods=["POST"])
@@ -25,16 +36,17 @@ def initier_paiement():
     transaction_id = f"PMT-ABN-{uuid.uuid4().hex[:20]}".upper()
 
     url = "https://api-checkout.cinetpay.com/v2/payment"
+    
 
     payload = {
-        "apikey": "208502353263ef823645c149.22531677",
-        "site_id": "365756",
+        "apikey": CINETPAY_APIKEY, # APIKEY de cinetpay
+        "site_id": CINETPAY_SITE_ID, # ID du site de cinetpay
         "transaction_id": transaction_id,
         "amount": montant,
         "currency": "XOF",
-        "description":f"Paiement de l'abonnement {abonnement.type_abonnement} pour affichage de menu",
-        # "notify_url": "https://ton-domaine.com/api/paiement/notify",  
-        # "return_url": "https://ton-domaine.com/paiement/status",      
+        "description":f"Paiement de l'abonnement {abonnement.type_abonnement} pour l'affichage de votre produit",
+        "notify_url": CINETPAY_NOTIFY_URL,  
+        "return_url": CINETPAY_RETURN_URL,      
         "channels": "ALL",
         "invoice_data":{
             "Reste à payer":"25 000fr",
@@ -81,28 +93,6 @@ def initier_paiement():
     except Exception as e:
         return jsonify({"error": "Erreur serveur", "message": str(e)}), 500
 
-# Route de notification
-@api.route("/confirmation_paiement", methods=["POST"])
-def notification_cinetpay():
-    data = request.form
-    transaction_id = data.get("transaction_id")
-    status = data.get("status")  # 'ACCEPTED', 'REFUSED', 'CANCELLED'
-
-    paiement = Paiements.query.filter_by(transaction_id=transaction_id).first()
-    if not paiement:
-        return jsonify({"error": "Paiement introuvable"}), 404
-
-    paiement.status = status
-    db.session.commit()
-
-    # Optionnel : activer l'abonnement si le paiement est accepté
-    if status == "ACCEPTED":
-        abonnement = Abonnements.query.get(paiement.abonnement_id)
-        abonnement.statut = "Actif"
-        db.session.commit()
-
-    return jsonify({"message": "Notification traitée"}), 200
-
 # Liste des paiements
 @api.route("/liste_paiement", methods=["GET"])
 def paiement_liste():
@@ -129,3 +119,113 @@ def paiement_liste():
             'total': len(paiements), # format lisible
         } for paiement in paiements
     ]), 200
+
+# Route de notification
+# Route de notification
+@api.route("/confirmation_paiement", methods=["POST"])
+def confirmation_paiement():  # Correction du nom de la fonction (confimation -> confirmation)
+    data = request.form
+    transaction_id = data.get("transaction_id")
+    status = data.get("status")  # 'ACCEPTED', 'REFUSED', 'CANCELLED'
+
+    # Validation des données reçues
+    if not transaction_id or not status:
+        return jsonify({"error": "Données de transaction incomplètes"}), 400
+
+    # Recherche du paiement dans la base de données
+    paiement = Paiements.query.filter_by(transaction_id=transaction_id).first()
+    if not paiement:
+        return jsonify({"error": "Paiement introuvable"}), 404
+
+    try:
+        # Mise à jour du statut du paiement
+        paiement.status = status
+        db.session.commit()
+
+        # Activation de l'abonnement si le paiement est accepté
+        if status == "ACCEPTED":
+            abonnement = Abonnements.query.get(paiement.abonnement_id)
+            if abonnement:
+                abonnement.statut = "Actif"
+                db.session.commit()
+
+        return jsonify({
+            "message": "Paiement confirmé !",
+            "transaction_id": transaction_id,
+            "status": status
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Erreur lors du traitement: {str(e)}"}), 500
+    
+from flask import request, jsonify
+import hashlib
+from datetime import datetime
+
+@api.route("/notification_paiement", methods=["POST"])
+def notification_paiement():
+    # 1. Récupération et validation des données
+    data = request.form
+    required_fields = ['cpm_trans_id', 'cpm_site_id', 'cpm_amount', 'cpm_currency', 'signature', 'payment_method', 'cel_phone_num', 'cpm_result']
+    
+    if not all(field in data for field in required_fields):
+        return jsonify({"error": "Données de notification incomplètes"}), 400
+
+    # 2. Vérification de la signature
+    api_key = os.getenv("CINETPAY_API_KEY")  # À stocker dans les variables d'environnement
+    signature_data = f"{data['cpm_trans_id']}{data['cpm_site_id']}{data['cpm_amount']}{data['cpm_currency']}{api_key}"
+    generated_signature = hashlib.sha256(signature_data.encode()).hexdigest()
+    
+    if generated_signature != data['signature']:
+        return jsonify({"error": "Signature invalide"}), 403
+
+    # 3. Traitement du paiement
+    try:
+        transaction_id = data['cpm_trans_id']
+        status = "ACCEPTED" if data['cpm_result'] == "00" else "REFUSED"
+        amount = int(data['cpm_amount'])
+        # phone = data['cel_phone_num']
+        method = data['payment_method']
+        
+        # Recherche du paiement
+        paiement = Paiements.query.filter_by(transaction_id=transaction_id).first()
+        
+        if not paiement:
+            return jsonify({"error": "Transaction introuvable"}), 404
+            
+        # Mise à jour du paiement
+        paiement.status = status
+        paiement.montant = amount
+        paiement.methode_paiement = method
+        # paiement.telephone = phone
+        paiement.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+
+        # Si paiement accepté, activer l'abonnement
+        if status == "ACCEPTED":
+            abonnement = Abonnements.query.get(paiement.abonnement_id)
+            if abonnement:
+                abonnement.statut = "Actif"
+                abonnement.date_debut = datetime.utcnow()
+                abonnement.date_fin = datetime.utcnow() + timedelta(days=30)  # Exemple: 1 mois
+                db.session.commit()
+
+                # Ici vous pourriez ajouter un email de confirmation
+                # ou une notification SMS
+
+        # Réponse obligatoire pour CinetPay
+        return jsonify({
+            "status": "success",
+            "message": "Notification traitée avec succès",
+            "transaction_id": transaction_id,
+            "code": data['cpm_result']
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "error": "Erreur de traitement",
+            "details": str(e)
+        }), 500

@@ -126,73 +126,12 @@ def get_restaurant_info(hash_url):
         }), 500
 
 # Affiche l'url du restaurant
-@api.route('/init_qrcode', methods=['GET'])
+@api.route('/init_qrcode/', methods=['GET'])
 def qrcode_init():
      qr_url, img_path = generate_qr_code(2)
      return jsonify({
          "text": qr_url
      })
-
-# Créer le compte du restaurant
-# @api.route('/create', methods=['POST'])
-# def create_restaurant():
-#     if request.method == 'POST':
-#         # Récupération des données du formulaire
-#         nom = request.form['nom'] 
-#         adresse = request.form['adresse'] 
-#         email = request.form['email']
-#         password = request.form['password']
-#         telephone = request.form['telephone']
-
-        
-#         # Validation des champs obligatoires
-#         if not nom or not email or not password:
-#             return jsonify({'msg': "Tous les champs sont obligatoires"}), 400
-        
-#         # Vérification des doublons
-#         if Restaurants.query.filter_by(email=email).first():
-#             return jsonify({'msg': "L'email est déjà utilisé"}), 400
-#         if Restaurants.query.filter_by(nom=nom).first():
-#             return jsonify({'msg': "Le nom du restaurant est déjà utilisé"}), 400
-
-#         # Génération du hash unique
-#         unique_str = f"{email}-{uuid.uuid4()}"
-#         hash_url = hashlib.sha256(unique_str.encode()).hexdigest()
-
-#         # Création du restaurant sans logo
-#         new_restaurant = Restaurants(
-#             nom=nom,
-#             adresse=adresse,
-#             email=email,
-#             password=hash_password(password),
-#             telephone=telephone,
-#             qr_code_url='',      # temporairement vide
-#             qr_code_img='',      # temporairement vide
-#             logo='',             # champ logo vide
-#             hash_url=hash_url,
-#         )
-#         db.session.add(new_restaurant)
-#         db.session.commit()
-
-#         # Génération du QR code maintenant que l'ID est connu
-#         qr_url, img_path = generate_qr_code(new_restaurant.id)
-
-#         # Mise à jour du restaurant avec le QR code
-#         new_restaurant.qr_code_url = qr_url
-#         new_restaurant.qr_code_img = img_path
-#         db.session.commit()
-
-#         return jsonify({
-#             'message': 'Restaurant créé avec succès',
-#             'restaurant': {
-#                 'id': new_restaurant.id,
-#                 'nom': new_restaurant.nom,
-#                 'statut': new_restaurant.statut,
-#                 'hash_url': new_restaurant.hash_url,
-#                 'qr_code_url': new_restaurant.qr_code_url,
-#                 'qr_code_img': new_restaurant.qr_code_img
-#             }
-#         }), 201
 
 @api.route('/create', methods=['POST'])
 def create_restaurant():
@@ -394,6 +333,33 @@ def restaurant_update(id):
         }
     }), 200
 
+# Mot passe oublié avec vérification de l'email et mise à jour mot de passe
+@api.route('/mot_de_passe_oublie', methods=['PUT'])
+def mot_de_passe_oublie():
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    passwordConfir = data.get('passwordConfir')
+
+    if not email:
+        return jsonify({'message': "L'email n'existe pas"}), 400
+    
+    if not password or not passwordConfir:
+        return jsonify({'message': "Le mot de passe n'existe pas"}), 400
+    
+    if password != passwordConfir:
+        return jsonify({'message': 'Les mots de passe ne correspondent pas'}), 400
+
+    restaurant = Restaurants.query.filter_by(email=email).first()
+    if not restaurant:
+        return jsonify({'message': 'Email non trouvé'}), 404
+
+    restaurant.password = hash_password(password)
+    db.session.commit()
+
+    return jsonify({'message': 'Mot de passe mis à jour avec succès'}), 200
+    
+
 # Afficher la liste des catégories d'un restaurant
 @api.route('/liste_categorie_restaurant/<int:id>', methods=['GET'])
 @jwt_required()
@@ -530,45 +496,39 @@ def enregistrer_scan():
                 existing_scan.number_scan_device += 1
                 existing_scan.last_scan_at = scanned_at
                 print(f"Scan existant mis à jour (ID: {existing_scan.id})")
-                db.session.commit()
-                return jsonify({
-                    "status": "updated",
-                    "scan_id": existing_scan.id,
-                    "count": existing_scan.number_scan_device
-                }), 200
+                
 
             # 8. Création d'un nouveau scan
-            new_scan = Scans(
-                restaurant_hash=restaurant.hash_url,
-                user_agent=user_agent_str,
-                device_brand=device_brand,
-                device_model=device_model,
-                os_family=user_agent.os.family,  # ✅ corrigé
-                os_version=user_agent.os.version_string,  # ✅ corrigé
-                browser_family=user_agent.browser.family,  # ✅ corrigé
-                scanned_at=scanned_at,
-                last_scan_at=scanned_at,
-                number_scan_device=1,
-                restaurant_id=restaurant.id,
-                device_identifier=f"{device_brand}:{device_model}:{restaurant.id}:{scanned_at.date()}"
-            )
+            else:
+                new_scan = Scans(
+                    restaurant_hash=restaurant.hash_url,
+                    user_agent=user_agent_str,
+                    device_brand=device_brand,
+                    device_model=device_model,
+                    os_family=user_agent.os.family,  # ✅ corrigé
+                    os_version=user_agent.os.version_string,  # ✅ corrigé
+                    browser_family=user_agent.browser.family,  # ✅ corrigé
+                    scanned_at=scanned_at,
+                    last_scan_at=scanned_at,
+                    number_scan_device=1,
+                    restaurant_id=restaurant.id,
+                    device_identifier=f"{device_brand}:{device_model}:{restaurant.id}:{scanned_at.date()}"
+                )
 
+                db.session.add(new_scan)
+        db.session.commit()
+        print(f"Nouveau scan créé (ID: {new_scan.id})")
 
-            db.session.add(new_scan)
-            db.session.commit()
-            print(f"Nouveau scan créé (ID: {new_scan.id})")
-
-            return jsonify({
-                "status": "created",
-                "scan_id": new_scan.id,
-                "count": 1
-            }), 201
+        return jsonify({
+            "status": "created",
+            "scan_id": new_scan.id,
+            "count": 1
+        }), 201
 
     except Exception as e:
         db.session.rollback()
         print(f"ERREUR CRITIQUE: {str(e)}")
         return jsonify({"error": "Erreur serveur", "details": str(e)}), 500
-
 
 
 @api.route("/stats/scans/<int:restaurant_id>", methods=["GET"])
@@ -630,7 +590,6 @@ def statistiques_scans(restaurant_id):
     }), 200
 
 
-    
 @api.route("/scan/stats/<restaurant_hash>", methods=["GET"])
 def stats_scans(restaurant_hash):
     today = date.today()
