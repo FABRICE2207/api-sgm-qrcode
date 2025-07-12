@@ -1,0 +1,6 @@
+# Ignore les fichiers et dossiers suivants :
+.env
+.flaskenv
+migrations/
+config.py
+venv/
