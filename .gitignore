@@ -2,5 +2,5 @@
 .env
 .flaskenv
 migrations/
-config.py
 venv/
+config.py
